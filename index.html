@@ -60,17 +60,67 @@
   <div class="footer"><button class="clear" id="clear">체크한 항목 모두 삭제</button></div>
 </main>
 
-<script>
-  const KEY = 'shopping-list';
-  let items = load();
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+  // 공개(publishable) 키 — 브라우저에 노출되어도 되는 키이며, 접근 권한은 RLS 정책으로 제어된다.
+  const SUPABASE_URL = 'https://sgffubylipryaptvijww.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_MGwOQzl1HRTfm0dK47n20g_xFxIkWLN';
+  const TABLE = 'shopping_items';
+  const LEGACY_KEY = 'shopping-list';
+
+  const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+  let items = [];
 
   const $ = id => document.getElementById(id);
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  function showError(error) {
+    console.error(error);
+    $('summary').textContent = '⚠️ 서버와 통신하지 못했어요. 잠시 후 다시 시도해 주세요.';
   }
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(items)); } catch {}
+
+  async function load() {
+    const { data, error } = await db.from(TABLE).select('id, text, done').order('id');
+    if (error) return showError(error);
+    items = data;
+    render();
+  }
+
+  // 예전에 localStorage에 저장된 항목이 있으면 한 번만 DB로 옮긴다.
+  async function migrateLocalStorage() {
+    let legacy;
+    try { legacy = JSON.parse(localStorage.getItem(LEGACY_KEY)); } catch { legacy = null; }
+    if (!Array.isArray(legacy) || legacy.length === 0) return;
+    const rows = legacy
+      .filter(i => typeof i?.text === 'string' && i.text.trim())
+      .map(i => ({ text: i.text.trim(), done: !!i.done }));
+    if (rows.length) {
+      const { error } = await db.from(TABLE).insert(rows);
+      if (error) return showError(error);
+    }
+    try { localStorage.removeItem(LEGACY_KEY); } catch {}
+  }
+
+  async function addItem(text) {
+    const { data, error } = await db.from(TABLE).insert({ text }).select('id, text, done').single();
+    if (error) return showError(error);
+    items.push(data);
+    render();
+  }
+
+  async function setDone(item, done) {
+    const { error } = await db.from(TABLE).update({ done }).eq('id', item.id);
+    if (error) { showError(error); return render(); }
+    item.done = done;
+    render();
+  }
+
+  async function removeItems(ids) {
+    if (ids.length === 0) return;
+    const { error } = await db.from(TABLE).delete().in('id', ids);
+    if (error) return showError(error);
+    items = items.filter(i => !ids.includes(i.id));
+    render();
   }
 
   function render() {
@@ -84,7 +134,7 @@
       cb.type = 'checkbox';
       cb.id = 'i' + item.id;
       cb.checked = item.done;
-      cb.onchange = () => { item.done = cb.checked; update(); };
+      cb.onchange = () => setDone(item, cb.checked);
 
       const label = document.createElement('label');
       label.htmlFor = cb.id;
@@ -94,7 +144,7 @@
       del.className = 'del';
       del.title = '삭제';
       del.textContent = '✕';
-      del.onclick = () => { items = items.filter(i => i.id !== item.id); update(); };
+      del.onclick = () => removeItems([item.id]);
 
       li.append(cb, label, del);
       list.append(li);
@@ -106,20 +156,19 @@
     $('summary').textContent = items.length ? `${items.length}개 중 ${done}개 완료` : '';
   }
 
-  function update() { save(); render(); }
-
-  $('form').onsubmit = e => {
+  $('form').onsubmit = async e => {
     e.preventDefault();
     const text = $('input').value.trim();
     if (!text) return;
-    items.push({ id: Date.now(), text, done: false });
     $('input').value = '';
-    update();
+    await addItem(text);
   };
 
-  $('clear').onclick = () => { items = items.filter(i => !i.done); update(); };
+  $('clear').onclick = () => removeItems(items.filter(i => i.done).map(i => i.id));
 
   render();
+  await migrateLocalStorage();
+  await load();
 </script>
 </body>
 </html>
