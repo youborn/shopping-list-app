@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>쇼핑 리스트</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1f2328; --muted: #8a9099;
+    --line: #e4e7eb; --accent: #2f7d5b; --danger: #c9463d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --card: #1f2227; --text: #e8eaed; --muted: #8b929c;
+      --line: #2e3238; --accent: #4fb488; --danger: #e26b62;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  main { max-width: 480px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .summary { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
+  form { display: flex; gap: 8px; margin-bottom: 16px; }
+  input[type=text] {
+    flex: 1; padding: 12px 14px; font-size: 1rem; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; }
+  .add { padding: 0 18px; background: var(--accent); color: #fff; font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; background: var(--card);
+       border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  li { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+       border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  li input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+  li label { flex: 1; word-break: break-word; cursor: pointer; }
+  li.done label { text-decoration: line-through; color: var(--muted); }
+  .del { background: none; color: var(--muted); font-size: 1.2rem; padding: 4px 8px; }
+  .del:hover { color: var(--danger); }
+  .empty { text-align: center; color: var(--muted); padding: 32px 0; }
+  .footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+  .clear { background: none; color: var(--muted); font-size: .9rem; padding: 6px 8px; }
+  .clear:hover { color: var(--danger); }
+</style>
+</head>
+<body>
+<main>
+  <h1>🛒 쇼핑 리스트</h1>
+  <div class="summary" id="summary"></div>
+  <form id="form">
+    <input type="text" id="input" placeholder="살 물건을 입력하세요" autocomplete="off" autofocus>
+    <button class="add" type="submit">추가</button>
+  </form>
+  <ul id="list"></ul>
+  <p class="empty" id="empty">목록이 비어 있어요.</p>
+  <div class="footer"><button class="clear" id="clear">체크한 항목 모두 삭제</button></div>
+</main>
+
+<script>
+  const KEY = 'shopping-list';
+  let items = load();
+
+  const $ = id => document.getElementById(id);
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(items)); } catch {}
+  }
+
+  function render() {
+    const list = $('list');
+    list.innerHTML = '';
+    for (const item of items) {
+      const li = document.createElement('li');
+      if (item.done) li.className = 'done';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'i' + item.id;
+      cb.checked = item.done;
+      cb.onchange = () => { item.done = cb.checked; update(); };
+
+      const label = document.createElement('label');
+      label.htmlFor = cb.id;
+      label.textContent = item.text;
+
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.title = '삭제';
+      del.textContent = '✕';
+      del.onclick = () => { items = items.filter(i => i.id !== item.id); update(); };
+
+      li.append(cb, label, del);
+      list.append(li);
+    }
+    const done = items.filter(i => i.done).length;
+    list.hidden = items.length === 0;
+    $('empty').hidden = items.length > 0;
+    $('clear').hidden = done === 0;
+    $('summary').textContent = items.length ? `${items.length}개 중 ${done}개 완료` : '';
+  }
+
+  function update() { save(); render(); }
+
+  $('form').onsubmit = e => {
+    e.preventDefault();
+    const text = $('input').value.trim();
+    if (!text) return;
+    items.push({ id: Date.now(), text, done: false });
+    $('input').value = '';
+    update();
+  };
+
+  $('clear').onclick = () => { items = items.filter(i => !i.done); update(); };
+
+  render();
+</script>
+</body>
+</html>
